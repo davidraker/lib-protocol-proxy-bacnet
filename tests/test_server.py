@@ -106,11 +106,15 @@ def test_starting_values_reads_platform_writes_and_seed():
             results, _ = await served.read(['s/Temp', 's/Fan', 's/Mode', 's/Status'])
             assert results == {'s/Temp': 70.5, 's/Fan': True, 's/Mode': 3, 's/Status': True}
             assert served.pushes.values == []                                   # platform writes are not pushed back
-            assert await served.seed({'s/Temp': 1.0, 's/Status': False}) == 0   # both already hold values
-            fresh = await serve([{'topic': 's/x', 'object_type': 'analogValue', 'instance': 9}])
+            fresh = ServedBACnetDevice('127.0.0.1/32', free_udp_port(), device_id=4244, object_name='fresh')
+            fresh.configure_points(POINTS[:2] + [{'topic': 's/x', 'object_type': 'analogValue', 'instance': 9}])
+            await fresh.start({'s/x': 3.5, 's/Temp': 1.0})                        # seeds beat starting values
             try:
-                assert await fresh.seed({'s/x': 3.5}) == 1 and (await fresh.read(['s/x']))[0] == {'s/x': 3.5}
-                assert await fresh.push_all() == {'s/x': 3.5}
+                assert fresh.seeded == 2 and (await fresh.read(['s/x', 's/Temp', 's/Setpoint']))[0] == {'s/x': 3.5, 's/Temp': 1.0, 's/Setpoint': 72.5}
+                await fresh.write({'s/x': 4.0})
+                await fresh.start({'s/x': 9.0})                                     # held values win over seeds
+                assert (await fresh.read(['s/x']))[0] == {'s/x': 4.0} and fresh.seeded == 0
+                assert await fresh.push_all() == {'s/x': 4.0, 's/Temp': 1.0, 's/Setpoint': 72.5}
             finally:
                 await fresh.close()
         finally:
@@ -172,13 +176,13 @@ def test_proxy_serves_and_closes_a_device(fake_bacnet_class):
                            object_name='served', points=POINTS, values={'s/Status': True, 's/Temp': 1.0})
         assert reply['error'] == {}, reply
         key = f'127.0.0.1/32:{port}:4242'
-        assert reply['result'] == {'server': key, 'points': len(POINTS), 'seeded': 1, 'port': port}
+        assert reply['result'] == {'server': key, 'points': len(POINTS), 'seeded': 2, 'port': port}
         served = proxy.servers[key]
         assert proxy.remotes[remote] is served and served.app is not None
         await asyncio.sleep(0.05)
-        assert pushes and pushes[0][0] == remote and pushes[0][1]['s/Status'] is True and pushes[0][1]['s/Temp'] == 68.25
+        assert pushes and pushes[0][0] == remote and pushes[0][1]['s/Status'] is True and pushes[0][1]['s/Temp'] == 1.0   # seeds win
         reply = await call(proxy, 'READ_POINTS', headers, topics=['s/Temp', 's/zz'])
-        assert reply == {'result': {'s/Temp': 68.25}, 'error': {'s/zz': 'unregistered topic'}}
+        assert reply == {'result': {'s/Temp': 1.0}, 'error': {'s/zz': 'unregistered topic'}}
         reply = await call(proxy, 'WRITE_POINTS', headers, values={'s/Temp': 70.0})
         assert reply['result']['s/Temp'] == {'status': 'stored', 'value': 70.0}
         reply = await call(proxy, 'REGISTER_REMOTE', headers, role='server', local_interface='127.0.0.1/32', port=port, device_id=4242,

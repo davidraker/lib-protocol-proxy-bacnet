@@ -181,8 +181,14 @@ class ServedBACnetDevice:
                 'objects': {t: list(p.identifier) for t, p in self.points.items()}, 'listening': self.app is not None}
 
     # ---- lifecycle ----------------------------------------------------------------------------------------------
-    async def start(self):
-        """(Re)build the application from the point table. Values of points that stay are kept."""
+    async def start(self, values: dict[str, Any] | None = None):
+        """(Re)build the application from the point table.
+
+        A point's value comes from, in order: what this process already holds (a platform restart), the caller's
+        current value in ``values`` (the platform's memory, after a proxy restart), the row's ``initial_value``. The
+        number of points seeded from ``values`` is left in ``seeded``.
+        """
+        values = values or {}
         kept = {topic: value for topic, value in self.values.items() if topic in self.points}
         if self.app is not None:
             self.app.close()
@@ -215,13 +221,21 @@ class ServedBACnetDevice:
         self.objects = objects
         await asyncio.sleep(0)                             # let bacpypes3 finish the objects' post-init
         self.values = {}
+        self.seeded = 0
         for topic, point in self.points.items():
-            value = kept.get(topic, point.initial_value)
-            if value not in (None, ''):
-                try:
-                    self._store(point, value)
-                except (ValueError, TypeError) as e:
-                    _log.warning(f'{self.local_interface}:{self.port}: starting value {value!r} for {topic} ignored: {e}')
+            if topic in kept:
+                value, source = kept[topic], 'held'
+            elif values.get(topic) is not None:
+                value, source = values[topic], 'seed'
+            else:
+                value, source = point.initial_value, 'starting'
+            if value in (None, ''):
+                continue
+            try:
+                self._store(point, value)
+                self.seeded += source == 'seed'
+            except (ValueError, TypeError) as e:
+                _log.warning(f'{self.local_interface}:{self.port}: {source} value {value!r} for {topic} ignored: {e}')
         _log.info(f'Serving BACnet device {self.device_id} on {self.local_interface}:{self.udp_port(self.port)} with '
                   f'{len(self.points)} objects.')
 
@@ -293,14 +307,6 @@ class ServedBACnetDevice:
                 continue
             results[topic] = {'status': 'stored', 'value': self.values[topic]}
         return results, errors
-
-    async def seed(self, values: dict[str, Any]) -> int:
-        pending = {t: v for t, v in values.items() if t in self.points and t not in self.values and v is not None}
-        results, errors = await self.write(pending)
-        for topic, error in errors.items():
-            _log.warning(f'Seed value for {topic} ignored: {error}')
-        self.seeded = len(results)
-        return self.seeded
 
     async def push_all(self) -> dict[str, Any]:
         values = {topic: self._current(self.points[topic]) for topic in self.values if topic in self.points} if self.app else {}

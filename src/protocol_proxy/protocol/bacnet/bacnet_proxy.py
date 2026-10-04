@@ -140,8 +140,7 @@ class BACnetProxy(AsyncioProtocolProxy):
                 served.push = partial(self._push_served, served)
             served.remote_id = remote_id
             count = served.configure_points(message.get('points') or [])
-            await served.start()
-            await served.seed(message.get('values') or {})
+            await served.start(message.get('values') or {})
         except Exception as e:
             _log.warning(f'Failed to serve BACnet device {key}: {e}')
             if served is not None and key not in self.servers:
