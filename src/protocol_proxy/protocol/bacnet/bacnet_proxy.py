@@ -1,5 +1,6 @@
 import asyncio
 import json
+from uuid import UUID
 import logging
 import sys
 import traceback
@@ -112,10 +113,13 @@ class BACnetProxy(AsyncioProtocolProxy):
     #     result = await self.bacnet.confirmed_private_transfer(address, vendor_id, service_number, service_parameters)
     #     return serialize(result)
 
-    async def cov_callback_function(self, peer, key, value):
+    async def cov_callback_function(self, peer, key, remote_id, value):
+        """Push one change of value to the subscriber, tagged with the remote id it subscribed with (if any) so the
+        manager routes it to that caller."""
         message = ProtocolProxyMessage(
             method_name='RECEIVE_COV',
-            payload=serialize({key: value})
+            payload=serialize({key: value}),
+            remote_id=remote_id
             )
         #_log.debug(f'@@@@@@ SENDING COV CALLBACK: {message}')
         await self.send(peer, message)
@@ -131,6 +135,12 @@ class BACnetProxy(AsyncioProtocolProxy):
         property_identifier = message['property_identifier']
         confirmed = message['issue_confirmed_notifications']
         lifetime = message['lifetime']
+        remote_id = None
+        if raw_remote := message.get('remote_id'):
+            try:
+                remote_id = UUID(str(raw_remote))
+            except ValueError:
+                _log.warning(f'Ignoring malformed remote_id {raw_remote!r} on COV subscription {key}')
         if existing := self._subscribed_cov.get(key):
             if existing.is_unchanged(address, object_identifier, confirmed, lifetime):
                 return
@@ -139,7 +149,7 @@ class BACnetProxy(AsyncioProtocolProxy):
                 self._subscribed_cov.pop(key)
         # TODO: What happens if remote has existing subscription that was lost on this end?
         self._subscribed_cov[key] = COVSubscription(address, object_identifier, confirmed, lifetime)
-        cov_callback = partial(self.cov_callback_function, peer, key)
+        cov_callback = partial(self.cov_callback_function, peer, key, remote_id)
         self.loop.create_task(self.bacnet.change_of_value(device_address=address, object_identifier=object_identifier,
                                           process_identifier=None, confirmed=confirmed, lifetime=lifetime,
                                           stop_event=self._subscribed_cov[key].stop_event, cov_callback=cov_callback,
