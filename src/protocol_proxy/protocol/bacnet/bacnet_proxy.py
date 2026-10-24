@@ -550,13 +550,6 @@ class BACnetProxy(AsyncioProtocolProxy):
             batch_read_timeout = cycle * (cls.DEFAULT_BATCH_CHUNKS + cls.SETUP_CYCLES)
         return request_timeout, max(cls.MIN_CALLBACK_TIMEOUT, batch_read_timeout)
 
-    @classmethod
-    def get_unique_remote_id(cls, unique_remote_id: tuple) -> tuple:
-        """Get a unique identifier for the proxy server
-         given a unique_remote_id and protocol-specific set of parameters."""
-        return unique_remote_id[0:2]  # TODO: How can we know what the first two params really are?
-                                      #  (Ideally they are address and port.)
-                                      #  Consider named tuple?
 
 async def run_proxy(local_interface, **kwargs) -> int:
     _log.info(f'Launching BACnet Proxy at interface {local_interface} using parameters: {redact(kwargs)}.')

@@ -225,4 +225,8 @@ def test_cache_endpoints(fake_bacnet_class):
 
 
 def test_unique_remote_id_is_local_interface_and_port():
-    assert BACnetProxy.get_unique_remote_id(('10.0.0.1/24', 3, 'extra')) == ('10.0.0.1/24', 3)
+    # One process per local interface and port: the manifest's identity keys, not a positional convention.
+    from pathlib import Path
+    from protocol_proxy.manifest import Manifest
+    manifest = Manifest.load(Path(__file__).parents[1] / 'src' / 'protocol_proxy' / 'protocol' / 'bacnet' / 'proxy.toml')
+    assert manifest.process_key(('anything',), {'local_interface': '10.0.0.1/24', 'bacnet_port': 3, 'extra': 1}) == ('bacnet', '10.0.0.1/24', 3)
