@@ -15,27 +15,16 @@ warn_unused_configs = true
 show_error_codes = true
 exclude = ['docs/']
 
-[tool.mypy-gevent]
-ignore_missing_imports = true
-
-[tool.mypy-mock]
-ignore_missing_imports = true
-
-[tool.mypy-pytest]
-ignore_missing_imports = true
-
-[tool.mypy-pytz]
-ignore_missing_imports = true
-
-[tool.mypy-volttron]
+[[tool.mypy.overrides]]
+module = ["bacpypes3.*", "gevent.*", "mock.*", "pytest.*", "pytz.*", "volttron.*"]
 ignore_missing_imports = true
 
 [tool.poetry]
 name = "protocol-proxy-bacnet"
-version = "2.0.0rc3"
+version = "2.0.0rc4"
 description = "A BACnet Protocol Proxy implementation. A BACnet Manager is provided which can launch proxy devices for communication with a BACnet network."
 authors = ["The VOLTTRON Development Team <volttron@pnnl.gov>"]
-license = "Apache License 2.0"
+license = "Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/eclipse-volttron/lib-protocol-proxy-bacnet"
 homepage = "https://github.com/eclipse-volttron/lib-protocol-proxy-bacnet"
@@ -53,7 +42,7 @@ classifiers = [
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
 bacpypes3 = ">=0.0.102"
-protocol-proxy = ">=2.0.0rc2"
+protocol-proxy = ">=2.0.0rc3"
 psutil = ">=5.9.0,<8.0.0"
 
 [tool.poetry.group.dev.dependencies]
